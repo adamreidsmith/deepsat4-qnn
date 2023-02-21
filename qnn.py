@@ -10,7 +10,7 @@ import seaborn as sns
 
 BATCH_SIZE = 512
 LR = 0.001
-EPOCHS = 100
+EPOCHS = 3
 
 print('Loading data...')
 # Load the DeepSat-4 dataset: https://csc.lsu.edu/~saikat/deepsat/
@@ -22,6 +22,11 @@ x_train, x_test, y_train, y_test = data['train_x'], data['test_x'], data['train_
 class Data(Dataset):
     def __init__(self, x_data, y_data):
         self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
+
+        # Normalize the input data
+        self.x_data -= self.x_data.mean(dim=(0, 1, 2))
+        self.x_data /= self.x_data.std(dim=(0, 1, 2))
+
         self.y_data = torch.Tensor(y_data)
 
     def __len__(self):
@@ -43,7 +48,7 @@ class CNN(nn.Module):
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features=588, out_features=4)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU(0.2)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -105,20 +110,23 @@ def test():
 
     return test_loss, test_accuracy
 
+try:
+    print('Training CNN model...')
+    train_loss, test_loss = [], []
+    train_acc, test_acc = [], []
+    for i in range(EPOCHS):
+        loss, acc = train()
+        train_loss.append(stats.mean(loss))
+        train_acc.append(stats.mean(acc))
 
-print('Training CNN model...')
-train_loss, test_loss = [], []
-train_acc, test_acc = [], []
-for i in range(EPOCHS):
-    loss, acc = train()
-    train_loss.append(stats.mean(loss))
-    train_acc.append(stats.mean(acc))
-
-    loss, acc = test()
-    test_loss.append(stats.mean(loss))
-    test_acc.append(stats.mean(acc))
-    print(
-        f'Epoch {i + 1} / {EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.1%} |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.1%}')
+        loss, acc = test()
+        test_loss.append(stats.mean(loss))
+        test_acc.append(stats.mean(acc))
+        print(
+            f'Epoch {i + 1} / {EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.1%} |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.1%}')
+except KeyboardInterrupt as e:
+    if not test_acc:
+        raise KeyboardInterrupt(e)
 
 plt.figure()
 sns.lineplot(train_loss, label='train')
