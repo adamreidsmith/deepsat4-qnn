@@ -8,9 +8,9 @@ import statistics as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-BATCH_SIZE = 512
+BATCH_SIZE = 256
 LR = 0.001
-EPOCHS = 3
+EPOCHS = 100
 
 print('Loading data...')
 # Load the DeepSat-4 dataset: https://csc.lsu.edu/~saikat/deepsat/
@@ -110,6 +110,7 @@ def test():
 
     return test_loss, test_accuracy
 
+
 try:
     print('Training CNN model...')
     train_loss, test_loss = [], []
@@ -123,7 +124,7 @@ try:
         test_loss.append(stats.mean(loss))
         test_acc.append(stats.mean(acc))
         print(
-            f'Epoch {i + 1} / {EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.1%} |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.1%}')
+            f'Epoch {i + 1} / {EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.2%}  |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.2%}')
 except KeyboardInterrupt as e:
     if not test_acc:
         raise KeyboardInterrupt(e)
