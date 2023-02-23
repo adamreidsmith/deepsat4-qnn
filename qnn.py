@@ -10,7 +10,7 @@ import seaborn as sns
 
 BATCH_SIZE = 256
 LR = 0.001
-EPOCHS = 100
+EPOCHS = 15
 
 print('Loading data...')
 # Load the DeepSat-4 dataset: https://csc.lsu.edu/~saikat/deepsat/
