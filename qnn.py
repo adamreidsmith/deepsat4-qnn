@@ -89,8 +89,8 @@ def train():
         # Weight optimization
         optimizer.step()
 
+        # Track loss and acuracy metrics
         train_loss.append(loss.item())
-
         train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(
             prediction, dim=1)).sum().item() / len(y))
 
@@ -102,15 +102,16 @@ def test():
 
     cnn.eval()
     for x, y in test_loader:
+        # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(categorical_cross_entropy(prediction, y).item())
-
         test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(
             prediction, dim=1)).sum().item() / len(y))
 
     return test_loss, test_accuracy
 
 
+# Training loop
 try:
     print('Training CNN model...')
     train_loss, test_loss = [], []
@@ -124,11 +125,12 @@ try:
         test_loss.append(stats.mean(loss))
         test_acc.append(stats.mean(acc))
         print(
-            f'Epoch {i + 1} / {EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.2%}  |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.2%}')
+            f'Epoch {i + 1}/{EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.2%}  |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.2%}')
 except KeyboardInterrupt as e:
     if not test_acc:
         raise KeyboardInterrupt(e)
 
+# Plot the results
 plt.figure()
 sns.lineplot(train_loss, label='train')
 sns.lineplot(test_loss, label='test')
