@@ -41,7 +41,7 @@ class CNN(nn.Module):
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features=588, out_features=4)
-        self.relu = lambda x: x  # nn.LeakyReLU(0.2)
+        self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
