@@ -7,6 +7,8 @@ import statistics as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from quanvolution import Qaunvolution
+
 
 DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
 BATCH_SIZE = 256

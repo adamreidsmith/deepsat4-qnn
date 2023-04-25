@@ -9,14 +9,15 @@ import seaborn as sns
 
 
 DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 LR = 0.001
-EPOCHS = 2
+EPOCHS = 20
 
 
 class Data(Dataset):
     def __init__(self, x_data, y_data):
         self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
+        print(self.x_data.shape)
 
         # Normalize the input data
         self.x_data -= self.x_data.mean(dim=(0, 1, 2))
@@ -55,7 +56,8 @@ def train(cnn, dataloader, loss_func, optimizer):
     train_loss, train_accuracy = [], []
 
     cnn.train()
-    for x, y in dataloader:
+    for i, (x, y) in enumerate(dataloader):
+        # print(f'Training iteration {i}/{len(dataloader)}')
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
         prediction = cnn(x)
@@ -64,15 +66,12 @@ def train(cnn, dataloader, loss_func, optimizer):
         loss = loss_func(prediction, y)
         loss.backward()
 
-        # Weight optimization
+        # Parameter optimization
         optimizer.step()
 
-        # Track loss and acuracy metrics
+        # Track loss and accuracy metrics
         train_loss.append(loss.item())
-        train_accuracy.append(
-            (torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item()
-            / len(y)
-        )
+        train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
 
     return train_loss, train_accuracy
 
@@ -81,14 +80,12 @@ def test(cnn, dataloader, loss_func):
     test_loss, test_accuracy = [], []
 
     cnn.eval()
-    for x, y in dataloader:
+    for i, (x, y) in enumerate(dataloader):
+        # print(f'Testing iteration {i}/{len(dataloader)}')
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())
-        test_accuracy.append(
-            (torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item()
-            / len(y)
-        )
+        test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
 
     return test_loss, test_accuracy
 
@@ -96,12 +93,14 @@ def test(cnn, dataloader, loss_func):
 def main():
     print("Loading data...")
     # Load the DeepSat-4 dataset
+    ntrain = 9000
+    ntest = 1000
     data = loadmat(DATAFILE)
     x_train, x_test, y_train, y_test = (
-        data["train_x"],
-        data["test_x"],
-        data["train_y"],
-        data["test_y"],
+        data["train_x"][:, :, :, :ntrain],
+        data["test_x"][:, :, :, :ntest],
+        data["train_y"][:, :ntrain],
+        data["test_y"][:, :ntest],
     )
 
     # Define the datasets
