@@ -1,3 +1,5 @@
+import pickle
+
 from scipy.io import loadmat
 import torch
 from torch import nn
@@ -6,12 +8,15 @@ from torch.optim import Adam
 import statistics as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.neighbors import BallTree
+import numpy as np
 
-from quanvolution import Qaunvolution
+from quanvolution import Quanvolution
+from constants import FILTERS
 
 
 DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
-BATCH_SIZE = 256
+BATCH_SIZE = 1
 LR = 0.001
 EPOCHS = 2
 
@@ -53,6 +58,61 @@ class CNN(nn.Module):
         return self.softmax(x)
 
 
+def prerun_quanvolution():
+    train_loader, _ = load_data()
+    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS)
+    kernel_size = 5
+    block_expectation_pairs = {}
+
+    try:
+        for img_batch, _ in train_loader:
+            img_batch = torch.mean(img_batch, dim=1, keepdim=True)  # Average out the channels
+
+            img_blocks = img_batch.unfold(2, kernel_size, 1).unfold(3, kernel_size, 1)
+            img_blocks = img_blocks.reshape(-1, kernel_size, kernel_size)
+
+            for block in img_blocks:
+                expectations = quanv(block)
+                block_expectation_pairs[block] = expectations
+
+    except KeyboardInterrupt:
+        pass
+
+    print('Writing pickle file.')
+    with open('block_expectation_pairs.pkl', 'wb') as f:
+        pickle.dump(block_expectation_pairs, f)
+    print('Wrote pickle file.')
+
+
+def define_balltree_from_pickle_file():
+    with open('block_expectation_pairs.pkl', 'rb') as f:
+        block_expectation_pairs = pickle.load(f)
+
+    blocks_flattened_numpy = np.array([x.flatten().numpy() for x in list(block_expectation_pairs.keys())])
+    balltree = BallTree(blocks_flattened_numpy)
+
+    return block_expectation_pairs, balltree
+
+
+def load_data(ntrain=9000, ntest=1000):
+    data = loadmat(DATAFILE)
+    x_train, x_test, y_train, y_test = (
+        data["train_x"][:, :, :, :ntrain],
+        data["test_x"][:, :, :, :ntest],
+        data["train_y"][:, :ntrain],
+        data["test_y"][:, :ntest],
+    )
+
+    # Define the datasets
+    train_data = Data(x_train, y_train)
+    test_data = Data(x_test, y_test)
+
+    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False)
+
+    return train_loader, test_loader
+
+
 def train(cnn, dataloader, loss_func, optimizer):
     train_loss, train_accuracy = [], []
 
@@ -71,10 +131,7 @@ def train(cnn, dataloader, loss_func, optimizer):
 
         # Track loss and acuracy metrics
         train_loss.append(loss.item())
-        train_accuracy.append(
-            (torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item()
-            / len(y)
-        )
+        train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
 
     return train_loss, train_accuracy
 
@@ -87,10 +144,7 @@ def test(cnn, dataloader, loss_func):
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())
-        test_accuracy.append(
-            (torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item()
-            / len(y)
-        )
+        test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
 
     return test_loss, test_accuracy
 
@@ -98,20 +152,7 @@ def test(cnn, dataloader, loss_func):
 def main():
     print("Loading data...")
     # Load the DeepSat-4 dataset
-    data = loadmat(DATAFILE)
-    x_train, x_test, y_train, y_test = (
-        data["train_x"],
-        data["test_x"],
-        data["train_y"],
-        data["test_y"],
-    )
-
-    # Define the datasets
-    train_data = Data(x_train, y_train)
-    test_data = Data(x_test, y_test)
-
-    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False)
+    train_loader, test_loader = load_data()
 
     # Instantiate the model
     cnn = CNN()
@@ -155,4 +196,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    prerun_quanvolution()
+    # block_expectation_pairs, balltree = define_balltree_from_pickle_file()

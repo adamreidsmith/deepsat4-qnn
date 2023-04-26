@@ -56,8 +56,7 @@ def train(cnn, dataloader, loss_func, optimizer):
     train_loss, train_accuracy = [], []
 
     cnn.train()
-    for i, (x, y) in enumerate(dataloader):
-        # print(f'Training iteration {i}/{len(dataloader)}')
+    for x, y in dataloader:
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
         prediction = cnn(x)
@@ -80,8 +79,7 @@ def test(cnn, dataloader, loss_func):
     test_loss, test_accuracy = [], []
 
     cnn.eval()
-    for i, (x, y) in enumerate(dataloader):
-        # print(f'Testing iteration {i}/{len(dataloader)}')
+    for x, y in dataloader:
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())

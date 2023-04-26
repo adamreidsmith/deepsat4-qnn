@@ -5,49 +5,28 @@ from qiskit import QuantumCircuit, Aer, execute
 from qiskit.circuit import ParameterVector
 import torch
 
-random.seed(25)
+from constants import DEFAULT_EDGES
 
-DEFAULT_EDGES = [
-    (0, 1),
-    (1, 2),
-    (2, 3),
-    (3, 4),
-    (4, 5),
-    (5, 6),
-    (6, 7),
-    (7, 8),
-    (8, 9),
-    (9, 10),
-    (8, 11),
-    (11, 12),
-    (12, 13),
-    (13, 14),
-    (14, 15),
-    (15, 16),
-    (16, 17),
-    (15, 18),
-    (18, 19),
-    (19, 20),
-    (20, 21),
-    (21, 22),
-    (22, 23),
-    (23, 24),
-]
+random.seed(25)
 
 
 class Quanvolution:
-    def __init__(self, edges, nfilters, kernel_size):
+    def __init__(self, edges=DEFAULT_EDGES, nfilters=1, kernel_size=5, manual_filters=None):
         self.nfilters = nfilters
         self.nnodes = max([e[0] for e in edges] + [e[1] for e in edges]) + 1  # number of nodes in the graph
-        assert kernel_size**2 == len(edges) + 1
         self.kernel_size = kernel_size
-        self.edges: list[tuple[int, int, float]] = self.generate_random_edge_weights(edges)
+        assert kernel_size**2 == len(edges) + 1
+
+        if manual_filters is None:
+            self.edges: list[tuple[int, int, float]] = self.generate_random_edge_weights(edges)
+        else:
+            self.edges = manual_filters
         self.backend = Aer.get_backend('qasm_simulator')
         self.filters: list[tuple[QuantumCircuit, ParameterVector]] = [
             self.create_qaoa_circuit(self.edges[i], p=1) for i in range(nfilters)
         ]
 
-    def generate_random_edge_weights(self, edges):
+    def generate_random_edge_weights(self, edges, weights=None):
         '''Add random edge weights to the graph defined by `edges`'''
 
         # k - number of filters
@@ -145,42 +124,72 @@ class Quanvolution:
         '''Run the quantum circuit and return the expectation value of the problem Hamiltonian'''
 
         bound_qc = qc.bind_parameters({param: val for param, val in zip(theta, theta_vals)})
-
         counts = execute(bound_qc, self.backend, shots=shots).result().get_counts()
         return self.compute_expectation(counts, edges)
 
-    def __call__(self, t: torch.Tensor):
+    def forward(self, t: torch.Tensor):
         '''Perform Quanvolution on a batched image input tensors'''
 
-        t = torch.mean(t, dim=1)
+        t = torch.mean(t, dim=1, keepdim=True)  # Must keep the dimension so that torch.unfold works properly
 
+        bs = t.shape[0]
         ks2 = self.kernel_size**2
-        imax = t.shape[1] - self.kernel_size + 1
-        jmax = t.shape[2] - self.kernel_size + 1
+        iout = t.shape[2] - self.kernel_size + 1
+        jout = t.shape[3] - self.kernel_size + 1
+        # Output tensor has shape (bs, self.nfilters, iout, jout)
 
-        out = torch.empty([t.shape[0], self.nfilters, imax, jmax])
-        print(t.shape[0] * self.nfilters * imax * jmax)
-        for batch_index in range(t.shape[0]):
-            for filter_index in range(self.nfilters):
-                for i in range(imax):
-                    for j in range(jmax):
-                        window = (
-                            t[batch_index, i : i + self.kernel_size, j : j + self.kernel_size].reshape(ks2).tolist()
-                        )
-                        expectation = self.run_circuit(
-                            self.filters[filter_index][0],
-                            self.filters[filter_index][1],
-                            window,
-                            self.edges[filter_index],
-                        )
-                        print(expectation)
-                        out[batch_index, filter_index, i, j] = expectation
-        return out
+        # Old method. New method below avoids the ugly nested for loops.
+        # out = torch.empty([bs, self.nfilters, iout, jout])
+        # t0=time.time()
+        # for batch_index in range(t.shape[0]):
+        #     for filter_index in range(self.nfilters):
+        #         for i in range(iout):
+        #             for j in range(jout):
+        #                 window = (
+        #                     t.squeeze()[batch_index, i : i + self.kernel_size, j : j + self.kernel_size]
+        #                     .reshape(ks2)
+        #                     .tolist()
+        #                 )
+        #                 expectation = self.run_circuit(
+        #                     *self.filters[filter_index],
+        #                     window,
+        #                     self.edges[filter_index],
+        #                 )
+        #                 out[batch_index, filter_index, i, j] = expectation
+
+        # Unfold the input tensor to obtain all blocks on which the quanvolution operation operates
+        t_blocks = t.unfold(2, self.kernel_size, 1).unfold(3, self.kernel_size, 1)
+        t_blocks = t_blocks.reshape(-1, self.kernel_size, self.kernel_size)
+
+        # Define a helper function to run the circuit
+        run_circuit = lambda t, i: self.run_circuit(*self.filters[i], t.reshape(ks2).tolist(), self.edges[i])
+
+        return torch.stack(
+            [
+                torch.Tensor([run_circuit(t, i) for t in t_blocks]).reshape(bs, iout, jout)
+                for i in range(self.nfilters)
+            ],
+            dim=1,
+        )
+
+    def forward_single_block(self, t):
+        '''Perform the forward operation for a single block of shape (kernel_size, kernel_size)'''
+
+        return [
+            self.run_circuit(*self.filters[i], t.reshape(self.kernel_size**2).tolist(), self.edges[i])
+            for i in range(self.nfilters)
+        ]
+
+    def __call__(self, t):
+        assert not t.isnan().any()
+        if len(t.shape) == 2:
+            return self.forward_single_block(t)
+        return self.forward(t)
 
 
 def main():
     img = torch.rand(2, 4, 5, 5)
-    Q1 = Quanvolution(DEFAULT_EDGES, nfilters=1, kernel_size=5)
+    Q1 = Quanvolution(DEFAULT_EDGES, nfilters=2, kernel_size=5)
     print(Q1(img))
 
 
