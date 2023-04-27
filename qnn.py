@@ -1,4 +1,5 @@
 import pickle
+import os
 
 from scipy.io import loadmat
 import torch
@@ -60,10 +61,11 @@ class CNN(nn.Module):
 
 def prerun_quanvolution():
     train_loader, _ = load_data()
-    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS)
+    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=6)
     kernel_size = 5
     block_expectation_pairs = {}
 
+    n = 0
     try:
         for img_batch, _ in train_loader:
             img_batch = torch.mean(img_batch, dim=1, keepdim=True)  # Average out the channels
@@ -72,25 +74,44 @@ def prerun_quanvolution():
             img_blocks = img_blocks.reshape(-1, kernel_size, kernel_size)
 
             for block in img_blocks:
+                n += 1
+                if n < 18520:
+                    continue
+                print(n)
                 expectations = quanv(block)
                 block_expectation_pairs[block] = expectations
+                if n % 1000 == 0:
+                    print(f'Blocks processed: {n}')
+                    write_pickle_file(block_expectation_pairs)
+                    block_expectation_pairs = {}
 
-    except KeyboardInterrupt:
-        pass
+    except:
+        print(f'Interrupted at {n}/{9000 * 24 * 24} blocks.')
 
-    print('Writing pickle file.')
-    with open('block_expectation_pairs.pkl', 'wb') as f:
+    write_pickle_file(block_expectation_pairs)
+
+
+def write_pickle_file(block_expectation_pairs, dir='processed_blocks'):
+    file_nums = [int(f[:-4]) for f in os.listdir(dir) if f[:-4].isnumeric()]
+    n = max(file_nums) if file_nums else -1
+    file = os.path.join(dir, f'{n+1}.pkl')
+    print(f'Writing \'{file}\'')
+    with open(file, 'wb') as f:
         pickle.dump(block_expectation_pairs, f)
-    print('Wrote pickle file.')
 
 
-def define_balltree_from_pickle_file():
-    with open('block_expectation_pairs.pkl', 'rb') as f:
-        block_expectation_pairs = pickle.load(f)
+def define_balltree_from_pickle_files(dir='processed_blocks'):
+    all_blocks = {}
+    for file in os.listdir(dir):
+        if not file[:-4].isnumeric():
+            continue
+        with open(file, 'rb') as f:
+            block_expectation_pairs = pickle.load(f)
 
-    blocks_flattened_numpy = np.array([x.flatten().numpy() for x in list(block_expectation_pairs.keys())])
+        all_blocks |= block_expectation_pairs
+
+    blocks_flattened_numpy = np.array([x.flatten().numpy() for x in list(all_blocks.keys())])
     balltree = BallTree(blocks_flattened_numpy)
-
     return block_expectation_pairs, balltree
 
 

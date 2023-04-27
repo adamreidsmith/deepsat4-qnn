@@ -11,7 +11,7 @@ random.seed(25)
 
 
 class Quanvolution:
-    def __init__(self, edges=DEFAULT_EDGES, nfilters=1, kernel_size=5, manual_filters=None):
+    def __init__(self, edges=DEFAULT_EDGES, nfilters=1, kernel_size=5, manual_filters=None, max_cores=5):
         self.nfilters = nfilters
         self.nnodes = max([e[0] for e in edges] + [e[1] for e in edges]) + 1  # number of nodes in the graph
         self.kernel_size = kernel_size
@@ -21,7 +21,10 @@ class Quanvolution:
             self.edges: list[tuple[int, int, float]] = self.generate_random_edge_weights(edges)
         else:
             self.edges = manual_filters
+
         self.backend = Aer.get_backend('qasm_simulator')
+        self.backend.set_options(max_parallel_threads=max_cores)
+
         self.filters: list[tuple[QuantumCircuit, ParameterVector]] = [
             self.create_qaoa_circuit(self.edges[i], p=1) for i in range(nfilters)
         ]

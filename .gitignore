@@ -1,3 +1,9 @@
-venv
-deepsat4
-block_expectation_pairs.pkl
+*
+
+!.gitignore
+!cnn.py
+!constants.py
+!qnn.py
+!quanvolution.py
+!requirements.txt
+!README.md
