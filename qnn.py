@@ -1,6 +1,10 @@
 import pickle
 import os
+import time
 import statistics as stats
+from itertools import chain
+from multiprocessing import Pool
+from functools import partial
 
 from scipy.io import loadmat
 import torch
@@ -155,15 +159,41 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
                 closest_processed_block = tuple(balltree.get_arrays()[0][index])
                 expectation_values = block_expectation_pairs[closest_processed_block]
                 out[batch_index, :, i, j] = torch.Tensor(expectation_values)
+
     return out
+
+
+def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=4):
+    apply_quanv_partial = partial(
+        apply_quanv,
+        balltree=balltree,
+        block_expectation_pairs=block_expectation_pairs,
+        kernel_size=kernel_size,
+        nfilters=nfilters,
+    )
+
+    with Pool(processes) as pool:
+        processed_tensors = pool.map(apply_quanv_partial, torch.tensor_split(t, processes))
+
+    return torch.cat(processed_tensors, 0)
+
+
+def normalize_quanvolution_output(t, mn, mx):
+    t -= mn
+    t /= mx - mn
+    return t
 
 
 def train(cnn, dataloader, loss_func, optimizer, balltree, block_expectation_pairs):
     train_loss, train_accuracy = [], []
 
+    outputs = tuple(chain(*block_expectation_pairs.values()))
+    mn, mx = min(outputs), max(outputs)
+
     cnn.train()
     for x, y in dataloader:
-        x = apply_quanv(x, balltree, block_expectation_pairs, 5, 5)
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, 4)
+        x = normalize_quanvolution_output(x, mn, mx)
 
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
@@ -186,9 +216,13 @@ def train(cnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 def test(cnn, dataloader, loss_func, balltree, block_expectation_pairs):
     test_loss, test_accuracy = [], []
 
+    mn, mx = min(list(block_expectation_pairs.values())), max(list(block_expectation_pairs.values()))
+
     cnn.eval()
     for x, y in dataloader:
-        x = apply_quanv(x, balltree, block_expectation_pairs, 5, 5)
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5)
+        x = normalize_quanvolution_output(x, mn, mx)
+
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())
