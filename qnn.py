@@ -1,12 +1,12 @@
 import pickle
 import os
+import statistics as stats
 
 from scipy.io import loadmat
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
-import statistics as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.neighbors import BallTree
@@ -47,18 +47,15 @@ class CNN(nn.Module):
     def __init__(self):
         super().__init__()
 
-        # self.conv1 = nn.Conv2d(in_channels=4, out_channels=5, stride=1, kernel_size=5)
-        self.pool1 = nn.AvgPool2d(kernel_size=5, stride=2)
         self.conv2 = nn.Conv2d(in_channels=5, out_channels=12, stride=1, kernel_size=3)
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(in_features=588, out_features=4)
-        self.relu = nn.LeakyReLU(0.2)
+        self.fc = nn.Linear(in_features=1452, out_features=4)
+        self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
-        # x = self.relu(self.pool1(self.conv1(x)))
-        x = self.pool1(x)
+        x = self.relu(x)  # Input already has the quanvolutional layer applied
         x = self.relu(self.pool2(self.conv2(x)))
         x = self.fc(self.flatten(x))
         return self.softmax(x)

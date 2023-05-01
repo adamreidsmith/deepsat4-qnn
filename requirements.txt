@@ -3,3 +3,6 @@ scipy
 matplotlib
 seaborn
 qiskit
+torch
+scikit-learn
+numpy
