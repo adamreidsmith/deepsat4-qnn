@@ -11,17 +11,21 @@ import seaborn as sns
 DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
 BATCH_SIZE = 128
 LR = 0.001
-EPOCHS = 20
+EPOCHS = 10
 
 
 class Data(Dataset):
     def __init__(self, x_data, y_data):
         self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
-        print(self.x_data.shape)
 
-        # Normalize the input data
-        self.x_data -= self.x_data.mean(dim=(0, 1, 2))
-        self.x_data /= self.x_data.std(dim=(0, 1, 2))
+        # # Normalize the input data
+        # self.x_data -= self.x_data.mean(dim=(0, 1, 2))
+        # self.x_data /= self.x_data.std(dim=(0, 1, 2))
+
+        # Standardize the data
+        mx, mn = self.x_data.max(), self.x_data.min()
+        self.x_data -= mn
+        self.x_data /= mx - mn
 
         self.y_data = torch.Tensor(y_data)
 

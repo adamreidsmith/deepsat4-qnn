@@ -15,20 +15,24 @@ import numpy as np
 from quanvolution import Quanvolution
 from constants import FILTERS
 
-
 DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
-BATCH_SIZE = 1
+BATCH_SIZE = 128
 LR = 0.001
-EPOCHS = 2
+EPOCHS = 10
 
 
 class Data(Dataset):
     def __init__(self, x_data, y_data):
         self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
 
-        # Normalize the input data
-        self.x_data -= self.x_data.mean(dim=(0, 1, 2))
-        self.x_data /= self.x_data.std(dim=(0, 1, 2))
+        # # Normalize the input data
+        # self.x_data -= self.x_data.mean(dim=(0, 1, 2))
+        # self.x_data /= self.x_data.std(dim=(0, 1, 2))
+
+        # Standardize the data
+        mx, mn = self.x_data.max(), self.x_data.min()
+        self.x_data -= mn
+        self.x_data /= mx - mn
 
         self.y_data = torch.Tensor(y_data)
 
@@ -44,7 +48,7 @@ class CNN(nn.Module):
         super().__init__()
 
         # self.conv1 = nn.Conv2d(in_channels=4, out_channels=5, stride=1, kernel_size=5)
-        # self.pool1 = nn.AvgPool2d(kernel_size=5, stride=2)
+        self.pool1 = nn.AvgPool2d(kernel_size=5, stride=2)
         self.conv2 = nn.Conv2d(in_channels=5, out_channels=12, stride=1, kernel_size=3)
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
         self.flatten = nn.Flatten()
@@ -53,7 +57,8 @@ class CNN(nn.Module):
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
-        x = self.relu(self.pool1(self.conv1(x)))
+        # x = self.relu(self.pool1(self.conv1(x)))
+        x = self.pool1(x)
         x = self.relu(self.pool2(self.conv2(x)))
         x = self.fc(self.flatten(x))
         return self.softmax(x)
@@ -100,19 +105,20 @@ def write_pickle_file(block_expectation_pairs, dir='processed_blocks'):
         pickle.dump(block_expectation_pairs, f)
 
 
-def define_balltree_from_pickle_files(dir='processed_blocks'):
+def define_balltree_from_pickle_files(directory='processed_blocks'):
     all_blocks = {}
-    for file in os.listdir(dir):
+    for file in os.listdir(directory):
         if not file[:-4].isnumeric():
             continue
-        with open(file, 'rb') as f:
+        with open(os.path.join(directory, file), 'rb') as f:
             block_expectation_pairs = pickle.load(f)
 
         all_blocks |= block_expectation_pairs
 
     blocks_flattened_numpy = np.array([x.flatten().numpy() for x in list(all_blocks.keys())])
+    all_blocks = {tuple(x.flatten().numpy()): y for x, y in all_blocks.items()}
     balltree = BallTree(blocks_flattened_numpy)
-    return block_expectation_pairs, balltree
+    return all_blocks, balltree
 
 
 def load_data(ntrain=9000, ntest=1000):
@@ -134,11 +140,40 @@ def load_data(ntrain=9000, ntest=1000):
     return train_loader, test_loader
 
 
-def train(cnn, dataloader, loss_func, optimizer):
+def apply_quanv(t, balltree, block_expectation_pairs, kernel_size):
+    t = torch.mean(t, dim=1, keepdim=True)  # Must keep the dimension so that torch.unfold works properly
+
+    bs = t.shape[0]
+    nfilters = len(list(block_expectation_pairs.values())[0])
+    ks2 = kernel_size**2
+    iout = t.shape[2] - kernel_size + 1
+    jout = t.shape[3] - kernel_size + 1
+    # Output tensor has shape (bs, nfilters, iout, jout)
+
+    # # Unfold the input tensor to obtain all blocks on which the quanvolution operation operates
+    # t_blocks = t.unfold(2, kernel_size, 1).unfold(3, kernel_size, 1)
+    # t_blocks = t_blocks.reshape(-1, kernel_size, kernel_size)
+
+    out = torch.empty([bs, nfilters, iout, jout])
+    for batch_index in range(bs):
+        for i in range(iout):
+            for j in range(jout):
+                block = t.squeeze(1)[batch_index, i : i + kernel_size, j : j + kernel_size].reshape(1, ks2).numpy()
+                index = balltree.query(block, return_distance=False)[0][0]
+                closest_processed_block = tuple(balltree.get_arrays()[0][index])
+                expectation_values = block_expectation_pairs[closest_processed_block]
+
+                out[batch_index, :, i, j] = torch.Tensor(expectation_values)
+    return out
+
+
+def train(cnn, dataloader, loss_func, optimizer, balltree, block_expectation_pairs):
     train_loss, train_accuracy = [], []
 
     cnn.train()
     for x, y in dataloader:
+        x = apply_quanv(x, balltree, block_expectation_pairs, 5)
+
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
         prediction = cnn(x)
@@ -157,11 +192,12 @@ def train(cnn, dataloader, loss_func, optimizer):
     return train_loss, train_accuracy
 
 
-def test(cnn, dataloader, loss_func):
+def test(cnn, dataloader, loss_func, balltree, block_expectation_pairs):
     test_loss, test_accuracy = [], []
 
     cnn.eval()
     for x, y in dataloader:
+        x = apply_quanv(x, balltree, block_expectation_pairs, 5)
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())
@@ -174,6 +210,9 @@ def main():
     print("Loading data...")
     # Load the DeepSat-4 dataset
     train_loader, test_loader = load_data()
+
+    # Load the data from the pre-run convolution operation
+    block_expectation_pairs, balltree = define_balltree_from_pickle_files()
 
     # Instantiate the model
     cnn = CNN()
@@ -188,11 +227,13 @@ def main():
         train_loss, test_loss = [], []
         train_acc, test_acc = [], []
         for i in range(EPOCHS):
-            loss, acc = train(cnn, train_loader, categorical_cross_entropy, optimizer)
+            loss, acc = train(
+                cnn, train_loader, categorical_cross_entropy, optimizer, balltree, block_expectation_pairs
+            )
             train_loss.append(stats.mean(loss))
             train_acc.append(stats.mean(acc))
 
-            loss, acc = test(cnn, test_loader, categorical_cross_entropy)
+            loss, acc = test(cnn, test_loader, categorical_cross_entropy, balltree, block_expectation_pairs)
             test_loss.append(stats.mean(loss))
             test_acc.append(stats.mean(acc))
             print(
@@ -217,6 +258,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    prerun_quanvolution()
-    # block_expectation_pairs, balltree = define_balltree_from_pickle_file()
+    main()

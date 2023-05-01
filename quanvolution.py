@@ -143,7 +143,6 @@ class Quanvolution:
 
         # Old method. New method below avoids the ugly nested for loops.
         # out = torch.empty([bs, self.nfilters, iout, jout])
-        # t0=time.time()
         # for batch_index in range(t.shape[0]):
         #     for filter_index in range(self.nfilters):
         #         for i in range(iout):
