@@ -22,10 +22,11 @@ class Data(Dataset):
         # self.x_data -= self.x_data.mean(dim=(0, 1, 2))
         # self.x_data /= self.x_data.std(dim=(0, 1, 2))
 
-        # Standardize the data
-        mx, mn = self.x_data.max(), self.x_data.min()
-        self.x_data -= mn
-        self.x_data /= mx - mn
+        # Standardize the data (per-channel min-max standardization)
+        pc_min, pc_max = self.x_data.reshape(4, -1).min(dim=1).values, self.x_data.reshape(4, -1).max(dim=1).values
+        for i in range(4):
+            self.x_data[i] -= pc_min[i]
+            self.x_data[i] /= pc_max[i] - pc_min[i]
 
         self.y_data = torch.Tensor(y_data)
 

@@ -5,7 +5,7 @@ from qiskit import QuantumCircuit, Aer, execute
 from qiskit.circuit import ParameterVector
 import torch
 
-from constants import DEFAULT_EDGES
+from constants import *
 
 random.seed(25)
 
@@ -30,7 +30,7 @@ class Quanvolution:
             self.create_qaoa_circuit(self.edges[i], p=1) for i in range(nfilters)
         ]
 
-    def generate_random_edge_weights(self, edges, weights=None):
+    def generate_random_edge_weights(self, edges):
         '''Add random edge weights to the graph defined by `edges`'''
 
         # k - number of filters
@@ -191,9 +191,10 @@ class Quanvolution:
 
 
 def main():
-    img = torch.rand(2, 4, 5, 5)
-    Q1 = Quanvolution(DEFAULT_EDGES, nfilters=2, kernel_size=5)
-    print(Q1(img))
+    img = torch.rand(5, 5)
+    for _ in range(10):
+        Q1 = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS)
+        print(Q1(img))
 
 
 if __name__ == '__main__':

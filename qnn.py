@@ -29,10 +29,11 @@ class Data(Dataset):
         # self.x_data -= self.x_data.mean(dim=(0, 1, 2))
         # self.x_data /= self.x_data.std(dim=(0, 1, 2))
 
-        # Standardize the data
-        mx, mn = self.x_data.max(), self.x_data.min()
-        self.x_data -= mn
-        self.x_data /= mx - mn
+        # Standardize the data (per-channel min-max standardization)
+        pc_min, pc_max = self.x_data.reshape(4, -1).min(dim=1).values, self.x_data.reshape(4, -1).max(dim=1).values
+        for i in range(4):
+            self.x_data[i] -= pc_min[1]
+            self.x_data[i] /= pc_max[i] - pc_min[i]
 
         self.y_data = torch.Tensor(y_data)
 
@@ -137,29 +138,22 @@ def load_data(ntrain=9000, ntest=1000):
     return train_loader, test_loader
 
 
-def apply_quanv(t, balltree, block_expectation_pairs, kernel_size):
-    t = torch.mean(t, dim=1, keepdim=True)  # Must keep the dimension so that torch.unfold works properly
+def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
+    t = torch.mean(t, dim=1)
 
     bs = t.shape[0]
-    nfilters = len(list(block_expectation_pairs.values())[0])
-    ks2 = kernel_size**2
-    iout = t.shape[2] - kernel_size + 1
-    jout = t.shape[3] - kernel_size + 1
+    iout = t.shape[1] - kernel_size + 1
+    jout = t.shape[2] - kernel_size + 1
     # Output tensor has shape (bs, nfilters, iout, jout)
-
-    # # Unfold the input tensor to obtain all blocks on which the quanvolution operation operates
-    # t_blocks = t.unfold(2, kernel_size, 1).unfold(3, kernel_size, 1)
-    # t_blocks = t_blocks.reshape(-1, kernel_size, kernel_size)
 
     out = torch.empty([bs, nfilters, iout, jout])
     for batch_index in range(bs):
         for i in range(iout):
             for j in range(jout):
-                block = t.squeeze(1)[batch_index, i : i + kernel_size, j : j + kernel_size].reshape(1, ks2).numpy()
+                block = t[batch_index, i : i + kernel_size, j : j + kernel_size].reshape(1, kernel_size**2).numpy()
                 index = balltree.query(block, return_distance=False)[0][0]
                 closest_processed_block = tuple(balltree.get_arrays()[0][index])
                 expectation_values = block_expectation_pairs[closest_processed_block]
-
                 out[batch_index, :, i, j] = torch.Tensor(expectation_values)
     return out
 
@@ -169,7 +163,7 @@ def train(cnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 
     cnn.train()
     for x, y in dataloader:
-        x = apply_quanv(x, balltree, block_expectation_pairs, 5)
+        x = apply_quanv(x, balltree, block_expectation_pairs, 5, 5)
 
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
@@ -194,7 +188,7 @@ def test(cnn, dataloader, loss_func, balltree, block_expectation_pairs):
 
     cnn.eval()
     for x, y in dataloader:
-        x = apply_quanv(x, balltree, block_expectation_pairs, 5)
+        x = apply_quanv(x, balltree, block_expectation_pairs, 5, 5)
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())
