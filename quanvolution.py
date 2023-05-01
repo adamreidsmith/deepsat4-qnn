@@ -23,7 +23,8 @@ class Quanvolution:
             self.edges = manual_filters
 
         self.backend = Aer.get_backend('qasm_simulator')
-        self.backend.set_options(max_parallel_threads=max_cores)
+        if max_cores is not None:
+            self.backend.set_options(max_parallel_threads=max_cores)
 
         self.filters: list[tuple[QuantumCircuit, ParameterVector]] = [
             self.create_qaoa_circuit(self.edges[i], p=1) for i in range(nfilters)
