@@ -7,16 +7,17 @@ import statistics as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
 DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
 BATCH_SIZE = 128
 LR = 0.001
-EPOCHS = 10
+EPOCHS = 100
 
 
 class Data(Dataset):
     def __init__(self, x_data, y_data):
-        self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
+        self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3)).to(DEVICE)
 
         # # Normalize the input data
         # self.x_data -= self.x_data.mean(dim=(0, 1, 2))
@@ -28,7 +29,7 @@ class Data(Dataset):
             self.x_data[i] -= pc_min[i]
             self.x_data[i] /= pc_max[i] - pc_min[i]
 
-        self.y_data = torch.Tensor(y_data)
+        self.y_data = torch.Tensor(y_data).to(DEVICE)
 
     def __len__(self):
         return self.x_data.shape[-1]
@@ -44,9 +45,9 @@ class CNN(nn.Module):
         self.conv1 = nn.Conv2d(in_channels=4, out_channels=5, stride=1, kernel_size=5)
         self.pool1 = nn.AvgPool2d(kernel_size=5, stride=2)
         self.conv2 = nn.Conv2d(in_channels=5, out_channels=12, stride=1, kernel_size=3)
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(in_features=192, out_features=4)
+        self.fc = nn.Linear(in_features=588, out_features=4)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
 
@@ -93,7 +94,10 @@ def test(cnn, dataloader, loss_func):
     return test_loss, test_accuracy
 
 
-def main():
+def run(epochs=None, lr=None, batch_size=None):
+    global EPOCHS, LR, BATCH_SIZE
+    EPOCHS, LR, BATCH_SIZE = epochs or EPOCHS, lr or LR, batch_size or BATCH_SIZE
+
     print("Loading data...")
     # Load the DeepSat-4 dataset
     ntrain = 9000
@@ -115,6 +119,7 @@ def main():
 
     # Instantiate the model
     cnn = CNN()
+    cnn.to(DEVICE)
 
     # Define the optimizer and loss function
     optimizer = Adam(cnn.parameters(), lr=LR)
@@ -134,25 +139,29 @@ def main():
             test_loss.append(stats.mean(loss))
             test_acc.append(stats.mean(acc))
             print(
-                f"Epoch {i + 1}/{EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.2%}  |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.2%}"
+                f'Epoch {i + 1}/{EPOCHS}  |  train loss {train_loss[-1]:.4f}  |  train acc {train_acc[-1]:.2%}  |  test loss {test_loss[-1]:.4f}  |  test acc {test_acc[-1]:.2%}'
             )
     except KeyboardInterrupt as e:
         if not test_acc:
             raise KeyboardInterrupt(e)
 
-    # Plot the results
-    plt.figure()
-    sns.lineplot(train_loss, label="train")
-    sns.lineplot(test_loss, label="test")
-    plt.title("Loss")
+    if __name__ == '__main__':
+        # Plot the results
+        plt.figure()
+        sns.lineplot(train_loss, label='train')
+        sns.lineplot(test_loss, label='test')
+        plt.title('Loss')
 
-    plt.figure()
-    sns.lineplot(train_acc, label="train")
-    sns.lineplot(test_acc, label="test")
-    plt.title("Accuracy")
+        plt.figure()
+        sns.lineplot(train_acc, label='train')
+        sns.lineplot(test_acc, label='test')
+        plt.title('Accuracy')
 
-    plt.show()
+        plt.show()
+
+    print(test_acc)
+    return train_acc, test_acc, train_loss, test_loss
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    run()

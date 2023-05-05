@@ -6,5 +6,6 @@ __pycache__
 !constants.py
 !qnn.py
 !quanvolution.py
+!balltree.py
 !requirements.txt
 !README.md
