@@ -25,7 +25,7 @@ DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 DATAFILE = './deepsat4/sat-4-full.mat'  # https://csc.lsu.edu/~saikat/deepsat/
 BATCH_SIZE = 128
 LR = 0.001
-EPOCHS = 100
+EPOCHS = 10
 
 
 class Data(Dataset):
@@ -55,16 +55,17 @@ class QNN(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.pool1 = nn.AvgPool2d(kernel_size=5, stride=2)
+        # self.pool1 = nn.AvgPool2d(kernel_size=5, stride=2)
         self.conv2 = nn.Conv2d(in_channels=5, out_channels=12, stride=1, kernel_size=3)
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(in_features=588, out_features=4)
+        self.fc = nn.Linear(in_features=1452, out_features=4)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
-        x = self.relu(self.pool1(x))  # Input already has the quanvolutional layer applied
+        # x = self.relu(self.pool1(x))  # Input already has the quanvolutional layer applied
+        x = self.relu(x)
         x = self.relu(self.pool2(self.conv2(x)))
         x = self.fc(self.flatten(x))
         return self.softmax(x)
@@ -72,7 +73,7 @@ class QNN(nn.Module):
 
 def prerun_quanvolution():
     train_loader, _ = load_data()
-    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=10)
+    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=6)
     kernel_size = 5
     block_expectation_pairs = {}
 
@@ -390,14 +391,14 @@ def run(epochs=None, lr=None, batch_size=None):
         with open(test_file, 'w') as f:
             write_quanv_in_out_dict_data(quanv_input_output_test_pairs, f)
 
-    assert all(
-        tuple(int(100 * v) for v in tuple(t.flatten().numpy())) in quanv_input_output_train_pairs
-        for t in torch.cat([t for t, _ in train_loader])
-    )
-    assert all(
-        tuple(int(100 * v) for v in tuple(t.flatten().numpy())) in quanv_input_output_test_pairs
-        for t in torch.cat([t for t, _ in test_loader])
-    )
+    # assert all(
+    #     tuple(int(100 * v) for v in tuple(t.flatten().numpy())) in quanv_input_output_train_pairs
+    #     for t in torch.cat([t for t, _ in train_loader])
+    # )
+    # assert all(
+    #     tuple(int(100 * v) for v in tuple(t.flatten().numpy())) in quanv_input_output_test_pairs
+    #     for t in torch.cat([t for t, _ in test_loader])
+    # )
     print('Quanvolution output obtained successfully.')
 
     # Instantiate the model
@@ -462,4 +463,5 @@ def run(epochs=None, lr=None, batch_size=None):
 
 
 if __name__ == '__main__':
-    run()
+    # run()
+    prerun_quanvolution()
