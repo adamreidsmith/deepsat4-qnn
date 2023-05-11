@@ -17,7 +17,7 @@ from sklearn.neighbors import BallTree
 import numpy as np
 from pympler import asizeof
 
-from quanvolution import Quanvolution
+from quanvolution_v1 import Quanvolution
 from constants import FILTERS
 
 DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
