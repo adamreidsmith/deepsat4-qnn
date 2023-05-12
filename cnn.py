@@ -49,17 +49,17 @@ class CNN(nn.Module):
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features=192, out_features=4)
         self.relu = nn.ReLU()
-        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
         x = self.relu(self.pool1(self.conv1(x)))
         x = self.relu(self.pool2(self.conv2(x)))
         x = self.fc(self.flatten(x))
-        return self.softmax(x)
+        return x
 
 
 def train(cnn, dataloader, loss_func, optimizer):
     train_loss, train_accuracy = [], []
+    softmax = nn.Softmax(dim=1)
 
     cnn.train()
     for x, y in dataloader:
@@ -76,20 +76,25 @@ def train(cnn, dataloader, loss_func, optimizer):
 
         # Track loss and accuracy metrics
         train_loss.append(loss.item())
-        train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
+        train_accuracy.append(
+            (torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y)
+        )
 
     return train_loss, train_accuracy
 
 
 def test(cnn, dataloader, loss_func):
     test_loss, test_accuracy = [], []
+    softmax = nn.Softmax(dim=1)
 
     cnn.eval()
     for x, y in dataloader:
         # Obtain predictions and track loss and accuracy metrics
         prediction = cnn(x)
         test_loss.append(loss_func(prediction, y).item())
-        test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
+        test_accuracy.append(
+            (torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y)
+        )
 
     return test_loss, test_accuracy
 

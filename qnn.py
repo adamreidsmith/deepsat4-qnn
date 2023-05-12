@@ -25,7 +25,7 @@ DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 DATAFILE = './deepsat4/sat-4-full.mat'  # https://csc.lsu.edu/~saikat/deepsat/
 BATCH_SIZE = 128
 LR = 0.001
-EPOCHS = 10
+EPOCHS = 100
 
 
 class Data(Dataset):
@@ -61,14 +61,13 @@ class QNN(nn.Module):
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(in_features=1452, out_features=4)
         self.relu = nn.ReLU()
-        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
         # x = self.relu(self.pool1(x))  # Input already has the quanvolutional layer applied
         x = self.relu(x)
         x = self.relu(self.pool2(self.conv2(x)))
         x = self.fc(self.flatten(x))
-        return self.softmax(x)
+        return x
 
 
 def prerun_quanvolution():
@@ -274,6 +273,7 @@ def normalize_quanvolution_output(t, mn, mx):
 
 def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pairs, quanv_input_output_train_pairs):
     train_loss, train_accuracy = [], []
+    softmax = nn.Softmax(dim=1)
 
     outputs = tuple(chain(*block_expectation_pairs.values()))
     mn, mx = min(outputs), max(outputs)
@@ -300,13 +300,14 @@ def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 
         # Track loss and acuracy metrics
         train_loss.append(loss.item())
-        train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
+        train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y))
 
     return train_loss, train_accuracy
 
 
 def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs, quanv_input_output_test_pairs):
     test_loss, test_accuracy = [], []
+    softmax = nn.Softmax(dim=1)
 
     outputs = tuple(chain(*block_expectation_pairs.values()))
     mn, mx = min(outputs), max(outputs)
@@ -323,7 +324,7 @@ def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs, quanv_in
         # Obtain predictions and track loss and accuracy metrics
         prediction = qnn(x.to(DEVICE))
         test_loss.append(loss_func(prediction, y).item())
-        test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(prediction, dim=1)).sum().item() / len(y))
+        test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y))
 
     return test_loss, test_accuracy
 
@@ -463,5 +464,5 @@ def run(epochs=None, lr=None, batch_size=None):
 
 
 if __name__ == '__main__':
-    # run()
-    prerun_quanvolution()
+    run()
+    # prerun_quanvolution()
