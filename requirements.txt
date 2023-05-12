@@ -6,3 +6,4 @@ qiskit
 torch
 scikit-learn
 numpy
+pympler
