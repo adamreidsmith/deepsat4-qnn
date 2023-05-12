@@ -64,7 +64,7 @@ class CNN(nn.Module):
 
 def prerun_quanvolution():
     train_loader, _ = load_data()
-    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=None)
+    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=6)
     kernel_size = 5
     block_expectation_pairs = {}
 
@@ -78,7 +78,7 @@ def prerun_quanvolution():
 
             for block in img_blocks:
                 n += 1
-                if n < 5:
+                if n < 4490:
                     continue
                 print(n)
                 expectations = quanv(block)
