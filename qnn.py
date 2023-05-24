@@ -300,11 +300,14 @@ def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 
         # Track loss and acuracy metrics
         train_loss.append(loss.item())
-        train_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y))
+        train_accuracy.append(
+            (torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y)
+        )
 
     return train_loss, train_accuracy
 
 
+@torch.no_grad()
 def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs, quanv_input_output_test_pairs):
     test_loss, test_accuracy = [], []
     softmax = nn.Softmax(dim=1)
@@ -324,7 +327,9 @@ def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs, quanv_in
         # Obtain predictions and track loss and accuracy metrics
         prediction = qnn(x.to(DEVICE))
         test_loss.append(loss_func(prediction, y).item())
-        test_accuracy.append((torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y))
+        test_accuracy.append(
+            (torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y)
+        )
 
     return test_loss, test_accuracy
 
@@ -354,7 +359,7 @@ def read_quanv_in_out_dict_data(file):
     return quanv_pairs
 
 
-def run(epochs=None, lr=None, batch_size=None):
+def main(epochs=None, lr=None, batch_size=None, plot=True):
     global EPOCHS, LR, BATCH_SIZE
     EPOCHS, LR, BATCH_SIZE = epochs or EPOCHS, lr or LR, batch_size or BATCH_SIZE
 
@@ -445,7 +450,7 @@ def run(epochs=None, lr=None, batch_size=None):
         if not test_acc:
             raise KeyboardInterrupt(e)
 
-    if __name__ == '__main__':
+    if plot:
         # Plot the results
         plt.figure()
         sns.lineplot(train_loss, label='train')
@@ -459,10 +464,24 @@ def run(epochs=None, lr=None, batch_size=None):
 
         plt.show()
 
-    print(test_acc)
+    print(train_acc, test_acc, train_loss, test_loss, sep='\n')
     return train_acc, test_acc, train_loss, test_loss
 
 
+def run_many(n=4):
+    mean_results = np.zeros((4, EPOCHS))
+    for i in range(n):
+        print(f'Beginning run {i+1}/{n}')
+        mean_results += np.array(main(plot=False))
+    mean_results /= n
+    print('Mean results:')
+    for result in mean_results:
+        print(list(result))
+
+
 if __name__ == '__main__':
-    run()
+    # main()
+    run_many(4)
     # prerun_quanvolution()
+
+nn.Module.eval
