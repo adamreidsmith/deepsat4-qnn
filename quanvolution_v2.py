@@ -72,7 +72,6 @@ class Quanvolution:
         qc_p = QuantumCircuit(self.nnodes)
         for i, (n1, n2, w) in enumerate(edges):  # pairs of nodes and edge weights
             qc_p.rzz(w * gamma[i], n1, n2)
-            # qc_p.barrier()
         return qc_p
 
     def define_qaoa_circuit(self, edges, theta, p):

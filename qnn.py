@@ -480,8 +480,8 @@ def run_many(n=4):
 
 
 if __name__ == '__main__':
-    # main()
-    run_many(4)
+    main()
+    # run_many(4)
     # prerun_quanvolution()
 
 nn.Module.eval
