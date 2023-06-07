@@ -182,5 +182,5 @@ def run_many(n=10):
 
 
 if __name__ == '__main__':
-    # main()
-    run_many(10)
+    main()
+    # run_many(10)

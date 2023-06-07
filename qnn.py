@@ -29,12 +29,10 @@ EPOCHS = 100
 
 
 class Data(Dataset):
+    '''Class to represent the dataset'''
+
     def __init__(self, x_data, y_data):
         self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
-
-        # # Normalize the input data
-        # self.x_data -= self.x_data.mean(dim=(0, 1, 2))
-        # self.x_data /= self.x_data.std(dim=(0, 1, 2))
 
         # Standardize the data (per-channel min-max standardization)
         pc_min, pc_max = self.x_data.reshape(4, -1).min(dim=1).values, self.x_data.reshape(4, -1).max(dim=1).values
@@ -52,6 +50,10 @@ class Data(Dataset):
 
 
 class QNN(nn.Module):
+    '''Represents the neural network after the quanvolution filter has been applied.
+    The filter has no trainable weights, so it does not need to be included in the optimization.
+    '''
+
     def __init__(self):
         super().__init__()
 
@@ -63,14 +65,15 @@ class QNN(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        # x = self.relu(self.pool1(x))  # Input already has the quanvolutional layer applied
-        x = self.relu(x)
+        x = self.relu(x)  # Input already has the quanvolutional layer applied
         x = self.relu(self.pool2(self.conv2(x)))
         x = self.fc(self.flatten(x))
         return x
 
 
 def prerun_quanvolution():
+    '''Runs the quanvolution operation in advance and saves the results in binary files'''
+
     train_loader, _ = load_data()
     quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=6)
     kernel_size = 5
@@ -103,6 +106,8 @@ def prerun_quanvolution():
 
 
 def write_pickle_file(block_expectation_pairs, dir='processed_blocks'):
+    '''Write the quanvolution output to binary files.'''
+
     file_nums = [int(f[:-4]) for f in os.listdir(dir) if f[:-4].isnumeric() or f[0] == '-']
     n = min(file_nums) if file_nums else 0  ###########################################################################
     file = os.path.join(dir, f'{n-1}.pkl')  ###########################################################################
@@ -112,7 +117,15 @@ def write_pickle_file(block_expectation_pairs, dir='processed_blocks'):
 
 
 def define_balltree_from_pickle_files(directory='processed_blocks'):
-    '''Load the pickle files containing the tensor blocks and their values after quanvolution'''
+    '''Load the pickle files containing the tensor blocks and their values after quanvolution
+    and define the BallTree data structure to support fast nearest neighbour search of the input
+    tensors.
+
+    The input tensors are flattened and converted to tuples (through numpy) so that they are hashable.
+    The resulting Dictionary of input/quanvoluted output pairs must be queried with flat tuples.
+    The BallTree uses the flat numpy vectors as input.
+    '''
+
     all_blocks = {}
     for file in os.listdir(directory):
         if not (file[:-4].isnumeric() or file[0] == '-'):
@@ -134,18 +147,24 @@ def define_balltree_from_pickle_files(directory='processed_blocks'):
 
 
 def tuple_to_str(key):
+    '''Convert a tuple to a string'''
     return ','.join(map(str, key))
 
 
 def str_to_tuple(s):
+    '''Convert a string to a tuple'''
     return tuple(map(float, s.split(',')))
 
 
 def define_balltree_from_pickle_files_shelve(directory='processed_blocks', output_file='merged_blocks.shelve'):
-    '''
-    Load the pickle files containing the tensor blocks and their values after quanvolution.
+    '''Load the pickle files containing the tensor blocks and their values after quanvolution.
     Here we use the shelve module to avoid excessive memory use when the files are large.
+
+    The input tensors are flattened and converted to tuples (through numpy) so that they are hashable.
+    The resulting Dictionary of input/quanvoluted output pairs must be queried with flat tuples.
+    The BallTree uses the flat numpy vectors as input.
     '''
+
     if not os.path.exists(output_file + '.db'):
         with shelve.open(output_file, 'n') as merged_blocks:
             for file in os.listdir(directory):
@@ -182,6 +201,8 @@ def define_balltree_from_pickle_files_shelve(directory='processed_blocks', outpu
 def get_nearest_neighbour_quanvolution_outputs(
     dataloader, balltree, block_expectation_pairs, kernel_size, nfilters, parallel=True, processes=4, normalize=True
 ):
+    '''Get nearest neighbour quanvolution outputs from all tensors in the dataloader.'''
+
     all_x_tensors = torch.cat([t for t, _ in dataloader])
 
     if parallel:
@@ -201,6 +222,7 @@ def get_nearest_neighbour_quanvolution_outputs(
 
 
 def get_batch_quanvolution_output_from_precomputed(batch, quanv_input_output_pairs):
+    '''Get a batch or quanvolution nearest neighbour outputs from precomputed values.'''
     if isinstance(batch, torch.Tensor):
         batch = [tuple(int(100 * v) for v in tuple(t.flatten().numpy())) for t in batch]
     x = [quanv_input_output_pairs.get(t) for t in batch]
@@ -211,6 +233,7 @@ def get_batch_quanvolution_output_from_precomputed(batch, quanv_input_output_pai
 
 
 def load_data(ntrain=9000, ntest=1000):
+    '''Load the datafile'''
     data = loadmat(DATAFILE)
     x_train, x_test, y_train, y_test = (
         data["train_x"][:, :, :, :ntrain],
@@ -230,6 +253,8 @@ def load_data(ntrain=9000, ntest=1000):
 
 
 def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
+    '''Apply the quanvolution operation to a batch of input tensors `t`'''
+
     t = torch.mean(t, dim=1)
 
     bs = t.shape[0]
@@ -241,9 +266,14 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
     for batch_index in range(bs):
         for i in range(iout):
             for j in range(jout):
+                # Get the block as a flattened numpy array
                 block = t[batch_index, i : i + kernel_size, j : j + kernel_size].reshape(1, kernel_size**2).numpy()
+
+                # Query the balltree to ge the nearest neighbour quanvolution output 
                 index = balltree.query(block, return_distance=False)[0][0]
                 closest_processed_block = tuple(balltree.get_arrays()[0][index])
+
+                # Get the expectation value corresponding to the nearest neighbour
                 expectation_values = block_expectation_pairs[closest_processed_block]
                 out[batch_index, :, i, j] = torch.Tensor(expectation_values)
 
@@ -251,6 +281,8 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
 
 
 def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=4):
+    '''Use parallelization to speed up the quanvolution operation'''
+
     apply_quanv_partial = partial(
         apply_quanv,
         balltree=balltree,
@@ -483,5 +515,3 @@ if __name__ == '__main__':
     main()
     # run_many(4)
     # prerun_quanvolution()
-
-nn.Module.eval
