@@ -73,7 +73,7 @@ def prerun_quanvolution(start=0):
     '''Runs the quanvolution operation in advance and saves the results in binary files'''
 
     train_loader, _ = load_data()
-    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=6)
+    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS)#, max_cores=3)
     kernel_size = 5
     block_expectation_pairs = {}
 
@@ -98,7 +98,8 @@ def prerun_quanvolution(start=0):
     except:
         print(f'Interrupted at {n}/{9000 * 24 * 24} blocks.')
 
-    write_processed_data(block_expectation_pairs)
+    if block_expectation_pairs:
+        write_processed_data(block_expectation_pairs)
 
 
 def block_to_tuple(block: torch.Tensor):
