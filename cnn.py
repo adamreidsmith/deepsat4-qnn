@@ -6,10 +6,11 @@ from torch.optim import Adam
 import statistics as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 
 DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 
-DATAFILE = "./deepsat4/sat-4-full.mat"  # https://csc.lsu.edu/~saikat/deepsat/
+DATAFILE = './deepsat4/sat-4-full.mat'  # https://csc.lsu.edu/~saikat/deepsat/
 BATCH_SIZE = 128
 LR = 0.001
 EPOCHS = 100
@@ -83,6 +84,7 @@ def train(cnn, dataloader, loss_func, optimizer):
     return train_loss, train_accuracy
 
 
+@torch.no_grad()
 def test(cnn, dataloader, loss_func):
     test_loss, test_accuracy = [], []
     softmax = nn.Softmax(dim=1)
@@ -99,20 +101,20 @@ def test(cnn, dataloader, loss_func):
     return test_loss, test_accuracy
 
 
-def run(epochs=None, lr=None, batch_size=None):
+def main(epochs=None, lr=None, batch_size=None, plot=True):
     global EPOCHS, LR, BATCH_SIZE
     EPOCHS, LR, BATCH_SIZE = epochs or EPOCHS, lr or LR, batch_size or BATCH_SIZE
 
-    print("Loading data...")
+    print('Loading data...')
     # Load the DeepSat-4 dataset
     ntrain = 9000
     ntest = 1000
     data = loadmat(DATAFILE)
     x_train, x_test, y_train, y_test = (
-        data["train_x"][:, :, :, :ntrain],
-        data["test_x"][:, :, :, :ntest],
-        data["train_y"][:, :ntrain],
-        data["test_y"][:, :ntest],
+        data['train_x'][:, :, :, :ntrain],
+        data['test_x'][:, :, :, :ntest],
+        data['train_y'][:, :ntrain],
+        data['test_y'][:, :ntest],
     )
 
     # Define the datasets
@@ -132,7 +134,7 @@ def run(epochs=None, lr=None, batch_size=None):
 
     # Training loop
     try:
-        print("Training CNN model...")
+        print('Training CNN model...')
         train_loss, test_loss = [], []
         train_acc, test_acc = [], []
         for i in range(EPOCHS):
@@ -150,7 +152,7 @@ def run(epochs=None, lr=None, batch_size=None):
         if not test_acc:
             raise KeyboardInterrupt(e)
 
-    if __name__ == '__main__':
+    if plot:
         # Plot the results
         plt.figure()
         sns.lineplot(train_loss, label='train')
@@ -164,9 +166,21 @@ def run(epochs=None, lr=None, batch_size=None):
 
         plt.show()
 
-    print(test_acc)
+    print(train_acc, test_acc, train_loss, test_loss, sep='\n')
     return train_acc, test_acc, train_loss, test_loss
 
 
+def run_many(n=10):
+    mean_results = np.zeros((4, EPOCHS))
+    for i in range(n):
+        print(f'Beginning run {i+1}/{n}')
+        mean_results += np.array(main(plot=False))
+    mean_results /= n
+    print('Mean results:')
+    for result in mean_results:
+        print(list(result))
+
+
 if __name__ == '__main__':
-    run()
+    main()
+    # run_many(10)

@@ -2,7 +2,7 @@ import random
 from math import pi
 
 from qiskit import QuantumCircuit, Aer, execute
-from qiskit.circuit import ParameterVector
+from qiskit.circuit import ParameterVector, Parameter
 import torch
 
 from constants import *
@@ -12,20 +12,29 @@ random.seed(25)
 
 class Quanvolution:
     def __init__(self, edges=DEFAULT_EDGES, nfilters=1, kernel_size=5, manual_filters=None, max_cores=5):
+        # Number of quantvolutional filters
         self.nfilters = nfilters
-        self.nnodes = max([e[0] for e in edges] + [e[1] for e in edges]) + 1  # number of nodes in the graph
+
+        # Number of nodes in the graph assuming the nodes are labeled 0, 1, ..., n
+        self.nnodes = max([e[0] for e in edges] + [e[1] for e in edges]) + 1
+
         self.kernel_size = kernel_size
+
+        # The kernel has one parameter for each edge (from the problem hamiltonian), and one more parameter (from the mixer hamiltonian)
         assert kernel_size**2 == len(edges) + 1
 
+        # Generate random filters if no filters are supplied.
         if manual_filters is None:
             self.edges: list[tuple[int, int, float]] = self.generate_random_edge_weights(edges)
         else:
             self.edges = manual_filters
 
+        # Run tasks in parallel on the local simulator
         self.backend = Aer.get_backend('qasm_simulator')
         if max_cores is not None:
             self.backend.set_options(max_parallel_threads=max_cores)
 
+        # A filter is a parameterized quantum circuit with kernel_size**2 parameters
         self.filters: list[tuple[QuantumCircuit, ParameterVector]] = [
             self.create_qaoa_circuit(self.edges[i], p=1) for i in range(nfilters)
         ]
@@ -33,16 +42,19 @@ class Quanvolution:
     def generate_random_edge_weights(self, edges):
         '''Add random edge weights to the graph defined by `edges`'''
 
-        # k - number of filters
         edge_list = []
         for _ in range(self.nfilters):
+            # Weights are initialized randomly on the interval [0, 2pi] (they correspond to rotations)
             edge_list.append([(n1, n2, 2 * pi * random.random()) for n1, n2 in edges])
         return edge_list
 
     def create_qaoa_circuit(self, edges, p=1):
-        '''Create the QAOA circuit parameters and get the circuit corresponding to the max-cut problem'''
+        '''Create the QAOA circuit parameters and get the circuit corresponding to the max-cut problem.
+        `p` is the number of 'layers', i.e. the number of successive problem and mixer hamiltonitans.
+        Usually p > 1 for a QAOA circuit, but we default to p = 1 here to reduce computational complexity.
+        '''
 
-        # Assign weights of 1 to edges with no weight
+        # Assign weights of 1 to edges with no weight (if any)
         edges = [(*e, 1.0) if len(e) == 2 else e for e in edges]
 
         # One gamma parameter for each edge, and one beta parameter for the mixer hamiltonian
@@ -55,25 +67,46 @@ class Quanvolution:
         qc = self.define_qaoa_circuit(edges, theta, p)
         return qc, theta
 
-    def define_mixer_circuit(self, beta):
-        '''Define the mixer circuit'''
+    def define_mixer_circuit(self, beta: Parameter):
+        '''Define the mixer circuit.
+        This circuit has a single parameter `beta` and applies a x-rotation by `beta` to each qubit:
+
+        |q_0> -- Rx(beta) --
+        |q_1> -- Rx(beta) --
+        ...
+        |q_n> -- Rx(beta) --
+        '''
 
         qc_mix = QuantumCircuit(self.nnodes)
         for i in range(self.nnodes):
             qc_mix.rx(beta, i)
         return qc_mix
 
-    def define_problem_circuit(self, edges, gamma):
-        '''Define the problem circuit'''
+    def define_problem_circuit(self, edges, gamma: ParameterVector):
+        '''Define the problem circuit.
+        This circuit applies RZZ operations between pairs of qubits specified by the graph edges.
+        For example, for a graph with edges [(0, 1), (1, 2), (0, 2)] and corresponding weights
+        [a, b, c], the following 3-qubit circuit is created:
+
+        |q_0> -- * ------------------------------------- * -----------------
+                 | RZZ(a * gamma_0)                      | RZZ(c * gamma_2)
+        |q_1> -- * ----------------- * ------------------|------------------
+                                     | RZZ(b * gamma_1)  |
+        |q_2> ---------------------- * ----------------- * -----------------
+
+        where the gamma_i are parameters.
+        '''
 
         qc_p = QuantumCircuit(self.nnodes)
-        for i, (n1, n2, w) in enumerate(edges):  # pairs of nodes and edge weights
+        for i, (n1, n2, w) in enumerate(edges):
             qc_p.rzz(w * gamma[i], n1, n2)
-            # qc_p.barrier()
         return qc_p
 
     def define_qaoa_circuit(self, edges, theta, p):
-        '''Compose the QAOA circuit corresponding to the max-cut problem'''
+        '''Compose the QAOA circuit corresponding to the max-cut problem.
+        This circuit initializes all qubits in the |+> state and then applies
+        `p` consecutive problem and mixer circuits.
+        '''
 
         qc = QuantumCircuit(self.nnodes)
 
@@ -95,11 +128,10 @@ class Quanvolution:
         return qc
 
     def maxcut_obj(self, bit_string, edges):
-        '''
-        Objective function of the max-cut problem
-
+        '''Objective function of the max-cut problem
         Returns the number of edges that connect oppositely labeled nodes in the graph
         '''
+
         obj = 0
         for i, j, _ in edges:
             if bit_string[i] != bit_string[j]:
@@ -107,15 +139,8 @@ class Quanvolution:
         return obj
 
     def compute_expectation(self, counts, edges):
-        '''
-        Computes expectation value of the problem Hamiltonian based on measurement results
-        Args:
-            counts: (dict) key as bit string, val as count
-            graph: networkx graph
-        Returns:
-            avg: float
-                expectation value
-        '''
+        '''Computes expectation value of the problem Hamiltonian based on measurement results'''
+
         avg = 0
         sum_count = 0
         for bit_string, count in counts.items():
@@ -124,7 +149,7 @@ class Quanvolution:
             sum_count += count
         return avg / sum_count
 
-    def run_circuit(self, qc, theta, theta_vals, edges, shots=1024):
+    def run_circuit(self, qc: QuantumCircuit, theta: ParameterVector, theta_vals: list[float], edges, shots=1024):
         '''Run the quantum circuit and return the expectation value of the problem Hamiltonian'''
 
         bound_qc = qc.bind_parameters({param: val for param, val in zip(theta, theta_vals)})
@@ -132,7 +157,8 @@ class Quanvolution:
         return self.compute_expectation(counts, edges)
 
     def forward(self, t: torch.Tensor):
-        '''Perform Quanvolution on a batched image input tensors'''
+        '''Perform Quanvolution on batched image input tensors of shape (batch_size, channels, n, m).
+        To keep the filters two dimensional, we take a channel-wise mean of the input'''
 
         t = torch.mean(t, dim=1, keepdim=True)  # Must keep the dimension so that torch.unfold works properly
 
@@ -165,11 +191,11 @@ class Quanvolution:
         t_blocks = t_blocks.reshape(-1, self.kernel_size, self.kernel_size)
 
         # Define a helper function to run the circuit
-        run_circuit = lambda t, i: self.run_circuit(*self.filters[i], t.reshape(ks2).tolist(), self.edges[i])
+        run_circuit_reduced = lambda t, i: self.run_circuit(*self.filters[i], t.reshape(ks2).tolist(), self.edges[i])
 
         return torch.stack(
             [
-                torch.Tensor([run_circuit(t, i) for t in t_blocks]).reshape(bs, iout, jout)
+                torch.Tensor([run_circuit_reduced(t, i) for t in t_blocks]).reshape(bs, iout, jout)
                 for i in range(self.nfilters)
             ],
             dim=1,
