@@ -95,6 +95,10 @@ def prerun_quanvolution(start=0):
                 if block_tuple in block_expectation_pairs:
                     print('WARNING: tupelized block already exists in processed data:\n', block_tuple, sep='')
                 block_expectation_pairs[block_tuple] = expectations
+
+                if n % 1000 == 0:
+                    write_processed_data(block_expectation_pairs)
+                    block_expectation_pairs = {}
     except:
         print(f'Interrupted at {n}/{9000 * 24 * 24} blocks.')
 
