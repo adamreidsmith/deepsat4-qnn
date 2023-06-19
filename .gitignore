@@ -5,8 +5,7 @@ __pycache__
 !cnn.py
 !constants.py
 !qnn.py
-!quanvolution_v1.py
-!quanvolution_v2.py
+!quanvolution.py
 !requirements.txt
 !README.md
 !results.png
