@@ -69,11 +69,11 @@ class QNN(nn.Module):
         return x
 
 
-def prerun_quanvolution(start=0):
+def prerun_quanvolution(start=0, max_cores=5):
     '''Runs the quanvolution operation in advance and saves the results in binary files'''
 
     train_loader, _ = load_data()
-    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS)#, max_cores=3)
+    quanv = Quanvolution(nfilters=5, kernel_size=5, manual_filters=FILTERS, max_cores=max_cores)
     kernel_size = 5
     block_expectation_pairs = {}
 
@@ -352,4 +352,4 @@ def run_many(n=4):
 if __name__ == '__main__':
     # main()
     # run_many(4)
-    prerun_quanvolution()
+    prerun_quanvolution(start=59, max_cores=2)
