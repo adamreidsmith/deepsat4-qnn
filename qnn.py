@@ -30,21 +30,28 @@ EPOCHS = 100
 class Data(Dataset):
     '''Class to represent the dataset'''
 
-    def __init__(self, x_data, y_data):
-        self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
+    def __init__(self, x_data, y_data, is_quanvoluted=False):
+        self.is_quanvoluted = is_quanvoluted
+        if not self.is_quanvoluted:
+            self.x_data = torch.Tensor(x_data).permute((2, 0, 1, 3))
 
-        # Standardize the data (per-channel min-max standardization)
-        pc_min, pc_max = self.x_data.reshape(4, -1).min(dim=1).values, self.x_data.reshape(4, -1).max(dim=1).values
-        for i in range(4):
-            self.x_data[i] -= pc_min[1]
-            self.x_data[i] /= pc_max[i] - pc_min[i]
+            # Standardize the data (per-channel min-max standardization)
+            pc_min, pc_max = self.x_data.reshape(4, -1).min(dim=1).values, self.x_data.reshape(4, -1).max(dim=1).values
+            for i in range(4):
+                self.x_data[i] -= pc_min[1]
+                self.x_data[i] /= pc_max[i] - pc_min[i]
 
-        self.y_data = torch.Tensor(y_data).to(DEVICE)
+            self.y_data = torch.Tensor(y_data)
+        else:
+            self.x_data = x_data
+            self.y_data = y_data
 
     def __len__(self):
-        return self.x_data.shape[-1]
+        return len(self.x_data) if self.is_quanvoluted else self.x_data.shape[-1]
 
     def __getitem__(self, i):
+        if self.is_quanvoluted:
+            return self.x_data[i], self.y_data[i]
         return self.x_data[:, :, :, i], self.y_data[:, i]
 
 
@@ -242,19 +249,8 @@ def preemptively_apply_quanv_layer(train_loader, test_loader, balltree, block_ex
             (train_imgs, test_imgs)[i].extend([*x])
             (train_labels, test_labels)[i].extend([*y])
 
-    class QuanvolutedData(Dataset):
-        def __init__(self, x_data, y_data):
-            self.x_data = x_data
-            self.y_data = y_data
-
-        def __len__(self):
-            return len(self.x_data)
-
-        def __getitem__(self, i):
-            return self.x_data[i], self.y_data[i]
-
-    train_loader = DataLoader(QuanvolutedData(train_imgs, train_labels), batch_size=BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(QuanvolutedData(test_imgs, test_labels), batch_size=BATCH_SIZE, shuffle=False)
+    train_loader = DataLoader(Data(train_imgs, train_labels, is_quanvoluted=True), batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(Data(test_imgs, test_labels, is_quanvoluted=True), batch_size=BATCH_SIZE, shuffle=False)
 
     with open(train_path, 'wb') as f:
         pickle.dump(train_loader, f)
@@ -270,9 +266,11 @@ def train(qnn, dataloader, loss_func, optimizer):
 
     qnn.train()
     for x, y in tqdm(dataloader, desc='Training model'):
+        x, y = x.to(DEVICE), y.to(DEVICE)
+
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
-        prediction = qnn(x.to(DEVICE))
+        prediction = qnn(x)
 
         # Loss computation and backpropagation
         loss = loss_func(prediction, y)
@@ -297,8 +295,10 @@ def test(qnn, dataloader, loss_func):
 
     qnn.eval()
     for x, y in tqdm(dataloader, desc='Testing model'):
+        x, y = x.to(DEVICE), y.to(DEVICE)
+
         # Obtain predictions and track loss and accuracy metrics
-        prediction = qnn(x.to(DEVICE))
+        prediction = qnn(x)
         test_loss.append(loss_func(prediction, y).item())
         test_accuracy.append(
             (torch.argmax(y, dim=1) == torch.argmax(softmax(prediction), dim=1)).sum().item() / len(y)
@@ -310,7 +310,7 @@ def test(qnn, dataloader, loss_func):
 def main(plot=True):
     print("Loading data...")
     # Load the DeepSat-4 dataset
-    train_loader, test_loader = load_data(900, 100)
+    train_loader, test_loader = load_data(9000, 1000) ########################################################
 
     # Instantiate the model
     qnn = QNN()
