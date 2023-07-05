@@ -21,7 +21,7 @@ from constants import FILTERS
 DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
 
 DATAFILE = './deepsat4/sat-4-full.mat'  # https://csc.lsu.edu/~saikat/deepsat/
-BATCH_SIZE = 2
+BATCH_SIZE = 128
 LR = 0.001
 EPOCHS = 100
 
