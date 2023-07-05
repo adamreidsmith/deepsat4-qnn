@@ -236,7 +236,7 @@ def preemptively_apply_quanv_layer(train_loader, test_loader, balltree, block_ex
     train_labels, test_labels = [], []
     for i, dataloader in enumerate([train_loader, test_loader]):
         for x, y in tqdm(dataloader, desc=f'Running {("train", "test")[i]} data through quanvolution layer'):
-            x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=4)
+            x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=16)
             x = normalize_quanvolution_output(x, mn, mx)
 
             (train_imgs, test_imgs)[i].extend([*x])
@@ -270,12 +270,6 @@ def train(qnn, dataloader, loss_func, optimizer):
 
     qnn.train()
     for x, y in tqdm(dataloader, desc='Training model'):
-<<<<<<< HEAD
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=16)
-        x = normalize_quanvolution_output(x, mn, mx)
-
-=======
->>>>>>> f71ae2ee60dbf6f421369ec6e0c3f62021f96992
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
         prediction = qnn(x.to(DEVICE))
@@ -303,12 +297,6 @@ def test(qnn, dataloader, loss_func):
 
     qnn.eval()
     for x, y in tqdm(dataloader, desc='Testing model'):
-<<<<<<< HEAD
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=16)
-        x = normalize_quanvolution_output(x, mn, mx)
-
-=======
->>>>>>> f71ae2ee60dbf6f421369ec6e0c3f62021f96992
         # Obtain predictions and track loss and accuracy metrics
         prediction = qnn(x.to(DEVICE))
         test_loss.append(loss_func(prediction, y).item())
@@ -322,7 +310,7 @@ def test(qnn, dataloader, loss_func):
 def main(plot=True):
     print("Loading data...")
     # Load the DeepSat-4 dataset
-    train_loader, test_loader = load_data(9000, 1000)
+    train_loader, test_loader = load_data(900, 100)
 
     # Instantiate the model
     qnn = QNN()
