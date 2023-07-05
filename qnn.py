@@ -87,7 +87,7 @@ def prerun_quanvolution(start=0, max_cores=5):
 
             for block in img_blocks:
                 n += 1
-                if n < start:
+                if n <= start:
                     continue
                 print(n)
                 expectations = quanv(block)
@@ -100,7 +100,7 @@ def prerun_quanvolution(start=0, max_cores=5):
                     write_processed_data(block_expectation_pairs)
                     block_expectation_pairs = {}
     except:
-        print(f'Interrupted at {n}/{9000 * 24 * 24} blocks.')
+        print(f'Interrupted at {n}/{9000 * 24 * 24} blocks (started at {start})')
 
     if block_expectation_pairs:
         write_processed_data(block_expectation_pairs)
@@ -173,6 +173,8 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
     jout = t.shape[2] - kernel_size + 1
     # Output tensor has shape (bs, nfilters, iout, jout)
 
+    balltree_arrays = balltree.get_arrays()[0]
+
     out = torch.empty([bs, nfilters, iout, jout])
     for batch_index in range(bs):
         for i in range(iout):
@@ -183,7 +185,7 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
 
                 # Query the balltree to ge the nearest neighbour quanvolution output
                 index = balltree.query(block, return_distance=False)[0][0]
-                closest_processed_block = balltree.get_arrays()[0][index]
+                closest_processed_block = balltree_arrays[index]
 
                 # Get the expectation value corresponding to the nearest neighbour
                 expectation_values = block_expectation_pairs[tuple(closest_processed_block)]
@@ -192,21 +194,21 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
     return out
 
 
-# def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=4):
-#     '''Use parallelization to speed up the quanvolution operation'''
+def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=4):
+    '''Use parallelization to speed up the quanvolution operation'''
 
-#     apply_quanv_partial = partial(
-#         apply_quanv,
-#         balltree=balltree,
-#         block_expectation_pairs=block_expectation_pairs,
-#         kernel_size=kernel_size,
-#         nfilters=nfilters,
-#     )
+    apply_quanv_partial = partial(
+        apply_quanv,
+        balltree=balltree,
+        block_expectation_pairs=block_expectation_pairs,
+        kernel_size=kernel_size,
+        nfilters=nfilters,
+    )
 
-#     with Pool(processes) as pool:
-#         processed_tensors = pool.map(apply_quanv_partial, torch.tensor_split(t, processes))
-
-#     return torch.cat(processed_tensors)
+    with Pool(processes) as pool:
+        processed_tensors = pool.map(apply_quanv_partial, torch.tensor_split(t, processes))
+    print('Quanv applied')
+    return torch.cat(processed_tensors)
 
 
 def normalize_quanvolution_output(t, mn, mx):
@@ -224,7 +226,7 @@ def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 
     qnn.train()
     for x, y in dataloader:
-        x = apply_quanv(x, balltree, block_expectation_pairs, 5, 5)
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=5)
         x = normalize_quanvolution_output(x, mn, mx)
 
         # Zero gradients and compute the prediction
@@ -350,6 +352,6 @@ def run_many(n=4):
 
 
 if __name__ == '__main__':
-    # main()
+    main()
     # run_many(4)
-    prerun_quanvolution(start=59, max_cores=2)
+    # prerun_quanvolution(start=int(1e6) + 3212, max_cores=12)
