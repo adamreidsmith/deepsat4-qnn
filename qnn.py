@@ -195,7 +195,7 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
     return out
 
 
-def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=4):
+def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=16):
     '''Use parallelization to speed up the quanvolution operation'''
 
     apply_quanv_partial = partial(
@@ -236,7 +236,7 @@ def preemptively_apply_quanv_layer(train_loader, test_loader, balltree, block_ex
     train_labels, test_labels = [], []
     for i, dataloader in enumerate([train_loader, test_loader]):
         for x, y in tqdm(dataloader, desc=f'Running {("train", "test")[i]} data through quanvolution layer'):
-            x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=4)
+            x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=16)
             x = normalize_quanvolution_output(x, mn, mx)
 
             (train_imgs, test_imgs)[i].extend([*x])
