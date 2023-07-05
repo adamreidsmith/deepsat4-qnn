@@ -87,7 +87,7 @@ def prerun_quanvolution(start=0, max_cores=5):
 
             for block in img_blocks:
                 n += 1
-                if n < start:
+                if n <= start:
                     continue
                 print(n)
                 expectations = quanv(block)
@@ -352,4 +352,4 @@ def run_many(n=4):
 if __name__ == '__main__':
     # main()
     # run_many(4)
-    prerun_quanvolution(start=59, max_cores=2)
+    prerun_quanvolution(start=2063108, max_cores=12)
