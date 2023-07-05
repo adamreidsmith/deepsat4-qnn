@@ -255,6 +255,12 @@ def preemptively_apply_quanv_layer(train_loader, test_loader, balltree, block_ex
 
     train_loader = DataLoader(QuanvolutedData(train_imgs, train_labels), batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(QuanvolutedData(test_imgs, test_labels), batch_size=BATCH_SIZE, shuffle=False)
+
+    with open(train_path, 'wb') as f:
+        pickle.dump(train_loader, f)
+    with open(test_path, 'wb') as f:
+        pickle.dump(test_loader, f)
+
     return train_loader, test_loader
 
 
