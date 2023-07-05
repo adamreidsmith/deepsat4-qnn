@@ -218,18 +218,52 @@ def normalize_quanvolution_output(t, mn, mx):
     return t
 
 
-def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pairs):
-    train_loss, train_accuracy = [], []
-    softmax = nn.Softmax(dim=1)
+def preemptively_apply_quanv_layer(train_loader, test_loader, balltree, block_expectation_pairs):
+    '''Process every tensor through the quanvolution layer preemptively to reduce training time of the qnn'''
+
+    train_path, test_path = './quanvoluted_train_data.pkl', './quanvoluted_test_data.pkl'
+    if os.path.exists(train_path) and os.path.exists(test_path):
+        with open(train_path, 'rb') as f:
+            train_loader = pickle.load(f)
+        with open(test_path, 'rb') as f:
+            test_loader = pickle.load(f)
+        return train_loader, test_loader
 
     outputs = tuple(chain(*block_expectation_pairs.values()))
     mn, mx = min(outputs), max(outputs)
 
+    train_imgs, test_imgs = [], []
+    train_labels, test_labels = [], []
+    for i, dataloader in enumerate([train_loader, test_loader]):
+        for x, y in tqdm(dataloader, desc=f'Running {("train", "test")[i]} data through quanvolution layer'):
+            x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=4)
+            x = normalize_quanvolution_output(x, mn, mx)
+
+            (train_imgs, test_imgs)[i].extend([*x])
+            (train_labels, test_labels)[i].extend([*y])
+
+    class QuanvolutedData(Dataset):
+        def __init__(self, x_data, y_data):
+            self.x_data = x_data
+            self.y_data = y_data
+
+        def __len__(self):
+            return len(self.x_data)
+
+        def __getitem__(self, i):
+            return self.x_data[i], self.y_data[i]
+
+    train_loader = DataLoader(QuanvolutedData(train_imgs, train_labels), batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(QuanvolutedData(test_imgs, test_labels), batch_size=BATCH_SIZE, shuffle=False)
+    return train_loader, test_loader
+
+
+def train(qnn, dataloader, loss_func, optimizer):
+    train_loss, train_accuracy = [], []
+    softmax = nn.Softmax(dim=1)
+
     qnn.train()
     for x, y in tqdm(dataloader, desc='Training model'):
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=15)
-        x = normalize_quanvolution_output(x, mn, mx)
-
         # Zero gradients and compute the prediction
         optimizer.zero_grad()
         prediction = qnn(x.to(DEVICE))
@@ -251,18 +285,12 @@ def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 
 
 @torch.no_grad()
-def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs):
+def test(qnn, dataloader, loss_func):
     test_loss, test_accuracy = [], []
     softmax = nn.Softmax(dim=1)
 
-    outputs = tuple(chain(*block_expectation_pairs.values()))
-    mn, mx = min(outputs), max(outputs)
-
     qnn.eval()
     for x, y in tqdm(dataloader, desc='Testing model'):
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=15)
-        x = normalize_quanvolution_output(x, mn, mx)
-
         # Obtain predictions and track loss and accuracy metrics
         prediction = qnn(x.to(DEVICE))
         test_loss.append(loss_func(prediction, y).item())
@@ -290,30 +318,21 @@ def main(plot=True):
     block_expectation_pairs = read_processed_data()
     balltree = define_balltree_from_processed_data(block_expectation_pairs)
 
+    train_loader, test_loader = preemptively_apply_quanv_layer(
+        train_loader, test_loader, balltree, block_expectation_pairs
+    )
+
     # Training loop
     try:
         print("Training QNN model...")
         train_loss, test_loss = [], []
         train_acc, test_acc = [], []
         for i in range(EPOCHS):
-            loss, acc = train(
-                qnn,
-                train_loader,
-                categorical_cross_entropy,
-                optimizer,
-                balltree,
-                block_expectation_pairs,
-            )
+            loss, acc = train(qnn, train_loader, categorical_cross_entropy, optimizer)
             train_loss.append(stats.mean(loss))
             train_acc.append(stats.mean(acc))
 
-            loss, acc = test(
-                qnn,
-                test_loader,
-                categorical_cross_entropy,
-                balltree,
-                block_expectation_pairs,
-            )
+            loss, acc = test(qnn, test_loader, categorical_cross_entropy)
             test_loss.append(stats.mean(loss))
             test_acc.append(stats.mean(acc))
             print(
