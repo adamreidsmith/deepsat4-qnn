@@ -227,7 +227,7 @@ def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
 
     qnn.train()
     for x, y in tqdm(dataloader, desc='Training model'):
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=15)
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=16)
         x = normalize_quanvolution_output(x, mn, mx)
 
         # Zero gradients and compute the prediction
@@ -260,7 +260,7 @@ def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs):
 
     qnn.eval()
     for x, y in tqdm(dataloader, desc='Testing model'):
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=15)
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=16)
         x = normalize_quanvolution_output(x, mn, mx)
 
         # Obtain predictions and track loss and accuracy metrics
@@ -276,7 +276,7 @@ def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs):
 def main(plot=True):
     print("Loading data...")
     # Load the DeepSat-4 dataset
-    train_loader, test_loader = load_data(900, 100)
+    train_loader, test_loader = load_data(9000, 1000)
 
     # Instantiate the model
     qnn = QNN()
