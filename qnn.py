@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.neighbors import BallTree
 import numpy as np
+from tqdm import tqdm
 
 from quanvolution import Quanvolution
 from constants import FILTERS
@@ -21,7 +22,7 @@ from constants import FILTERS
 DEVICE = torch.device('mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
 
 DATAFILE = './deepsat4/sat-4-full.mat'  # https://csc.lsu.edu/~saikat/deepsat/
-BATCH_SIZE = 2
+BATCH_SIZE = 128
 LR = 0.001
 EPOCHS = 100
 
@@ -207,7 +208,7 @@ def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, 
 
     with Pool(processes) as pool:
         processed_tensors = pool.map(apply_quanv_partial, torch.tensor_split(t, processes))
-    print('Quanv applied')
+
     return torch.cat(processed_tensors)
 
 
@@ -225,8 +226,8 @@ def train(qnn, dataloader, loss_func, optimizer, balltree, block_expectation_pai
     mn, mx = min(outputs), max(outputs)
 
     qnn.train()
-    for x, y in dataloader:
-        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=5)
+    for x, y in tqdm(dataloader, desc='Training model'):
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=15)
         x = normalize_quanvolution_output(x, mn, mx)
 
         # Zero gradients and compute the prediction
@@ -258,8 +259,8 @@ def test(qnn, dataloader, loss_func, balltree, block_expectation_pairs):
     mn, mx = min(outputs), max(outputs)
 
     qnn.eval()
-    for x, y in dataloader:
-        x = apply_quanv(x, balltree, block_expectation_pairs, 5, 5)
+    for x, y in tqdm(dataloader, desc='Testing model'):
+        x = apply_quanv_parallelized(x, balltree, block_expectation_pairs, 5, 5, processes=15)
         x = normalize_quanvolution_output(x, mn, mx)
 
         # Obtain predictions and track loss and accuracy metrics
@@ -354,8 +355,4 @@ def run_many(n=4):
 if __name__ == '__main__':
     main()
     # run_many(4)
-<<<<<<< HEAD
-    prerun_quanvolution(start=2063108, max_cores=12)
-=======
-    # prerun_quanvolution(start=int(1e6) + 3212, max_cores=12)
->>>>>>> 677385345a43766bcaf339379e1e79ef79ad15fb
+    # prerun_quanvolution(start=2280144, max_cores=12)
