@@ -195,7 +195,7 @@ def apply_quanv(t, balltree, block_expectation_pairs, kernel_size, nfilters):
     return out
 
 
-def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=4):
+def apply_quanv_parallelized(t, balltree, block_expectation_pairs, kernel_size, nfilters, processes=16):
     '''Use parallelization to speed up the quanvolution operation'''
 
     apply_quanv_partial = partial(
