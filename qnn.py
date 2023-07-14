@@ -249,7 +249,9 @@ def preemptively_apply_quanv_layer(train_loader, test_loader, balltree, block_ex
             (train_imgs, test_imgs)[i].extend([*x])
             (train_labels, test_labels)[i].extend([*y])
 
-    train_loader = DataLoader(Data(train_imgs, train_labels, is_quanvoluted=True), batch_size=BATCH_SIZE, shuffle=False)
+    train_loader = DataLoader(
+        Data(train_imgs, train_labels, is_quanvoluted=True), batch_size=BATCH_SIZE, shuffle=False
+    )
     test_loader = DataLoader(Data(test_imgs, test_labels, is_quanvoluted=True), batch_size=BATCH_SIZE, shuffle=False)
 
     with open(train_path, 'wb') as f:
@@ -310,7 +312,7 @@ def test(qnn, dataloader, loss_func):
 def main(plot=True):
     print("Loading data...")
     # Load the DeepSat-4 dataset
-    train_loader, test_loader = load_data(9000, 1000) ########################################################
+    train_loader, test_loader = load_data(9000, 1000)
 
     # Instantiate the model
     qnn = QNN()
@@ -379,5 +381,5 @@ def run_many(n=4):
 
 if __name__ == '__main__':
     main()
-    # run_many(4)
+    # run_many(10)
     # prerun_quanvolution(start=2280144, max_cores=12)
